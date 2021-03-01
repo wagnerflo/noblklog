@@ -13,14 +13,20 @@
 # limitations under the License.
 
 from abc import ABC,abstractmethod
-from asyncio import get_running_loop
-from functools import partial
+from asyncio import get_running_loop,CancelledError,Event
+from collections import deque
 from selectors import DefaultSelector,EVENT_WRITE
+
+selector = DefaultSelector()
 
 class AsyncEmitMixin(ABC):
     def __init__(self, write_fd, write_func):
-        self._write_fd = write_fd
-        self._write_func = write_func
+        self._aem_fd = write_fd
+        self._aem_func = write_func
+        self._aem_queue = None
+        self._aem_event = None
+        self._aem_consumer = None
+        self._aem_known_loops = set()
 
     @abstractmethod
     def prepareMessage(self, record):
@@ -32,82 +38,157 @@ class AsyncEmitMixin(ABC):
             try:
                 loop = get_running_loop()
             except RuntimeError:
-                write_sync(self._write_fd, self._write_func, msg)
-            else:
-                write_async(loop, self._write_fd, self._write_func, msg)
+                loop = None
+            self._aem_write(loop, msg)
         except:
             self.handleError(record)
 
-def _writer(fut, func, data):
-    # Someone might have decided to cancel the Future. Take that as a
-    # sign to stop trying to send data.
-    if fut.done():
-        return
-
-    try:
-        n = func(data)
-
-    # We were told EAGAIN, so just return and let the event loop decide
-    # when to try again.
-    except (BlockingIOError, InterruptedError):
-        return
-
-    # Something horrible has happend.
-    except Exception as exc:
-        fut.set_exception(exc)
-        return
-
-    # At this point we are either done...
-    if n == len(data):
-        fut.set_result(None)
-
-    # ...or at least have written some part of the data.
-    else:
-        del data[:n]
-
-def try_write(func, data):
-    # Take shot at writing the data. Small amounts will fit into the
-    # kernel buffer right away and thus we might get away without
-    # the overhead of an event loop.
-    try:
-        n = func(data)
-    except (BlockingIOError, InterruptedError):
-        n = 0
-
-    if n == len(data):
-        return
-
-    return bytearray(memoryview(data)[n:])
-
-def write_async(loop, fd, func, data):
-    if data := try_write(func, data):
-        # Use a Future to communicate completion of the writers job and
-        # allow removing it from the loop.
+    def _start_writer(self, loop):
         fut = loop.create_future()
-        fut.add_done_callback(partial(loop.remove_writer, fd))
+        fut.add_done_callback(
+            lambda fut: loop.remove_writer(self._aem_fd)
+        )
+        loop.add_writer(self._aem_fd, self._writer, fut)
+        return fut
 
-        # Let the event loop decide when to continue.
-        loop.add_writer(fd, _writer, fut, func, data)
+    def _writer(self, fut):
+        try:
+            # Start or continue sending data. The left side of the queue
+            # represents our current message.
+            data = self._aem_queue[0]
+            n = self._aem_func(data)
 
-selector = DefaultSelector()
+            # We were told EAGAIN, so just return and let the event loop
+            # decide when to try again.
+        except (BlockingIOError, InterruptedError) as exc:
+            return
 
-def write_sync(fd, func, data):
-    if data := try_write(func, data):
-        selector.register(fd, EVENT_WRITE)
+        # Something horrible has happend.
+        except Exception as exc:
+            fut.set_exception(exc)
+            return
+
+        # We might have not written all of the message right away...
+        if n != len(data):
+            del data[:n]
+
+        # ...or someone thinks it might be a good idea to stop sending
+        # any more messages
+        elif fut.done():
+            return
+
+        # ...or we might have more messages left in the queue
+        elif len(self._aem_queue) > 1:
+            self._aem_queue.popleft()
+
+        # ...or possibly are really done for now.
+        else:
+            self._aem_queue.clear()
+            fut.set_result(None)
+
+    async def _ame_consume(self, loop):
+        try:
+            while await self._aem_event.wait():
+                self._aem_event.clear()
+                await self._start_writer(loop)
+
+        except CancelledError:
+            # Look for a new loop to move the consumer to.
+            new_loop = self._find_loop()
+
+            # If our collection only yields ourselves then we might as
+            # well continue to empty the queue on this loop.
+            if new_loop == loop:
+                await self._start_writer(loop)
+                self._aem_event = None
+                self._aem_consumer = None
+
+            # We got lucky. This can only happen in multi threaded
+            # enviroments with multiple loops running in different
+            # threads and using logging everywhere.
+            else:
+                await self._start_writer(loop)
+
+    def _find_loop(self):
+        # Throw out all loops that are closed.
+        self._aem_known_loops.difference_update([
+            loop for loop in self._aem_known_loops
+            if loop.is_closed()
+        ])
+        try:
+            return next(iter(self._aem_known_loops))
+        except StopIteration:
+            return None
+
+    def _start_comsumer(self, loop):
+        self._aem_event = Event(loop=loop)
+        self._aem_consumer = loop.create_task(
+            self._ame_consume(loop)
+        )
+
+    def _aem_write(self, loop, data):
+        # If the queue is empty try writing right away. Small messages
+        # might complete immediately and thus allow the overhead of
+        # queue and consumer task to be avoided.
+        if not self._aem_queue:
+            try:
+                n = self._aem_func(data)
+            except (BlockingIOError, InterruptedError):
+                n = 0
+
+            if n == len(data):
+                return
+
+            data = memoryview(data)[n:]
+
+        # Copy data into a bytearray to make sure we have a mutable
+        # buffer for piecewise writing.
+        data = bytearray(data)
+
+        if not self._aem_consumer:
+            if loop is None:
+                # We know of no running consumer and also have been
+                # called from outside a loop: No other way than to write
+                # synchronously.
+                return self._write_sync(data)
+
+            # Starting here we can't postpone creating queue and
+            # consumer any longer.
+            self._aem_queue = deque()
+            self._start_comsumer(loop)
+
+        # Build a small collection of loops for worse times.
+        self._aem_known_loops.add(loop)
+
+        # Append to queue and notify consumer.
+        self._aem_queue.append(data)
+        self._aem_event.set()
+
+    def _write_sync(self, data):
+        selector.register(self._aem_fd, EVENT_WRITE)
 
         try:
             while data:
                 selector.select()
-
                 try:
-                    n = func(data)
+                    del data[:self._aem_func(data)]
                 except (BlockingIOError, InterruptedError):
                     continue
-
-                if n == len(data):
-                    break
-                else:
-                    del data[:n]
-
         finally:
-            selector.unregister(fd)
+            selector.unregister(self._aem_fd)
+
+    def close(self):
+        parent_close = super().close
+
+        def write_all(fut=None):
+            if self._aem_queue is not None:
+                for data in self._aem_queue:
+                    self._write_sync(data)
+
+            parent_close()
+
+        if self._aem_consumer and not self._aem_consumer.cancelled():
+            self._aem_consumer.add_done_callback(write_all)
+            self._aem_consumer.cancel()
+        else:
+            write_all()
