@@ -13,9 +13,19 @@
 # limitations under the License.
 
 from .stream import AsyncStreamHandler
-from .syslog import AsyncSysLogHandler
+from .syslog import (
+    AsyncSysLogHandler,
+    SYSLOG_FORMAT_RFC3164,
+    SYSLOG_FORMAT_RFC5424,
+    SYSLOG_FRAMING_NON_TRANSPARENT,
+    SYSLOG_FRAMING_OCTET_COUNTING,
+)
 
 __all__ = (
     'AsyncStreamHandler',
     'AsyncSysLogHandler',
+    'SYSLOG_FORMAT_RFC3164',
+    'SYSLOG_FORMAT_RFC5424',
+    'SYSLOG_FRAMING_NON_TRANSPARENT',
+    'SYSLOG_FRAMING_OCTET_COUNTING',
 )
