@@ -14,7 +14,7 @@
 
 from .stream import AsyncStreamHandler
 from .syslog import (
-    AsyncSysLogHandler,
+    AsyncSyslogHandler,
     SYSLOG_FORMAT_RFC3164,
     SYSLOG_FORMAT_RFC5424,
     SYSLOG_FRAMING_NON_TRANSPARENT,
@@ -23,7 +23,7 @@ from .syslog import (
 
 __all__ = (
     'AsyncStreamHandler',
-    'AsyncSysLogHandler',
+    'AsyncSyslogHandler',
     'SYSLOG_FORMAT_RFC3164',
     'SYSLOG_FORMAT_RFC5424',
     'SYSLOG_FRAMING_NON_TRANSPARENT',

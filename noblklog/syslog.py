@@ -95,7 +95,7 @@ def mk_get_from_record(defaults, record_properties, max_len):
 
     return func
 
-class AsyncSysLogHandler(AsyncEmitMixin, Handler):
+class AsyncSyslogHandler(AsyncEmitMixin, Handler):
     def __init__(self,
                  facility='user',
                  hostname=None,
