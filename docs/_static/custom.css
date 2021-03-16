@@ -1,0 +1,57 @@
+h1.logo a {
+    text-decoration: none;
+}
+
+h1.logo a:hover {
+    text-decoration: none;
+    border-bottom-style: dotted;
+}
+
+div.sphinxsidebarwrapper h3 {
+    margin-top: 20px;
+}
+
+div.contents p.topic-title {
+    margin-top: 0;
+    margin-bottom: 0;
+}
+
+div.body a.toc-backref {
+    text-decoration: none;
+}
+
+div.body > .section {
+    margin-bottom: 30px;
+}
+
+div#rtd-sidebar {
+    margin-top: 30px;
+}
+
+.py.class {
+    margin-bottom: 30px;
+}
+
+.py.exception {
+    margin-bottom: 30px;
+}
+
+.py.class .field-list.simple {
+    margin-bottom: 17px;
+}
+
+.py.class .py.method {
+    margin-bottom: 17px;
+}
+
+dt#noblklog\.AsyncSyslogHandler + dd > dl.field-list {
+    display: block;
+}
+
+dt#noblklog\.AsyncSyslogHandler + dd > dl.field-list > dd {
+    margin-left: 20px;
+}
+
+dt#noblklog\.AsyncSyslogHandler + dd > dl.field-list > dd > ul > li {
+    margin-top: 20px;
+}

@@ -96,6 +96,117 @@ def mk_get_from_record(defaults, record_properties, max_len):
     return func
 
 class AsyncSyslogHandler(AsyncEmitMixin, Handler):
+    ''' Asynchronous logging handler for sending RFC 3164 or 5424
+        compatible messages to Syslog.
+
+        This handler only implements sending log messages to a local
+        unix domain socket. Usually this is ``/dev/log`` to get them
+        delivered to the local Syslog daemon. Delivering directly to
+        remote destinations is not implemented as I see no need to
+        increase code complexity when just about every Syslog daemon
+        already supports forwarding messages.
+
+        Traditionally Syslog uses UDP (:data:`~socket.SOCK_DGRAM`) for
+        transport. This is usually also the case for delivery over the
+        local Unix domain socket. Using a Datagram protocol has the
+        advantage of keeping all messages seperate but limits the
+        maximum message size. The protcol limit is usually not a problem
+        as Syslog daemons set smaller limits by default.
+
+        In addition to tuning your Syslog daemon you'll also need to
+        to switch to a TCP / stream transport if you really want to go
+        above the ~65k bytes message limit of UDP. Take a minute to also
+        review the parameter ``message_framing`` and your Syslog
+        daemon's settings if you go that way.
+
+        This handler will encode messages contents in UTF-8. For RFC
+        5424 this is the specified behaviour. For RFC 3164 this simply
+        works usually. (That's all you can ever hope for the old
+        Syslog protocol.)
+
+        :param facility: Set the Syslog facility to send messages with.
+                   See :meth:`~logging.handlers.SysLogHandler.encodePriority`
+                   for possible values. Defaults to ``'user'``.
+        :type facility: str
+
+        :param hostname: Specify the default hostname to send messages
+                   with. Defaults to the value returned by
+                   :func:`socket.gethostname`. Individual messages can
+                   overwrite this by passing
+                   ``extra={'hostname': 'string}`` to the logging
+                   method.
+        :type hostname: str
+
+        :param appname: Specify the default appname (or tag in RFC 3164
+                   jargon) to send messages with. Defaults to ``'-'`` to
+                   denote uspecified as per RFC 5424. Use
+                   ``extra={'appname': 'string'}`` to overwrite this for
+                   individual messages.
+        :type appname: str
+
+        :param procid: Specify the default process id to send with the
+                   messages with. Defaults to ``'-'`` for RFC 5424 mode
+                   and completly dropping the field for RFC 3164. Since
+                   the :mod:`logging` module will be default pass the
+                   result of :func:`os.getpid` for each message logged
+                   and this handler will use the value there's usually
+                   no reason to use this. Use
+                   ``extra={'procid': 'string', ...}`` to overwrite this
+                   for individual messages.
+        :type procid: str
+
+        :param structured_data: Reserved for future use.
+        :param enterprise_id: Reserved for future use.
+
+        :param socket_path: Path of the Unix domain socket to connect
+                   and deliver messages to. On common Unix systems with
+                   common configurations there's no need to use any
+                   value but the default (``'/dev/log'``).
+        :type socket_path: str
+
+        :param socket_types: List of socket types to try connecting to
+                   the Syslog socket with. The first type for which a
+                   connection succeeds will be used. By default
+                   :data:`~socket.SOCK_DGRAM` will be tried before
+                   :data:`~socket.SOCK_STREAM`.
+        :type socket_types: list
+
+        :param message_format: Specify how to format the sent messages.
+                   Usually you should use the default of
+                   ``SYSLOG_FORMAT_RFC5424`` as this format is simply
+                   much better. With ``SYSLOG_FORMAT_RFC3164`` you get
+                   the predecessor that should work just about
+                   everywhere but is much well defined.
+        :type message_format: int
+
+        :param message_framing: Tell's the handler how to delimit
+                   messages on stream transports. For datagramm (UDP)
+                   mode this parameter is ignored. The default value of
+                   ``SYSLOG_FRAMING_NON_TRANSPARENT`` will simply end
+                   each message with a newline character. This can break
+                   if you're into logging newlines. Try using
+                   ``SYSLOG_FRAMING_OCTET_COUNTING`` then but be warned
+                   that some Syslog deamons might need configuration
+                   changes or simply not support this mode.
+        :type message_framing: int
+
+        :param utf8_bom: Some RFC 5424 Syslog deamons will trip over the
+                   UTF-8 byte order mark required by the standard. This
+                   is obviously broken behaviour but since a workaround
+                   is trivial here you go. Set this parameter to False
+                   to write the message without a BOM between header and
+                   content.
+        :type utf8_bom: bool
+
+        :param utc_timestamp: Send message timestamp as UTC instead of
+                   localtime with timezone information. Will be ignored
+                   in RFC 3164 mode. This can be useful if your log
+                   messages originate in different timezones but some
+                   component of your logging stack can't handle the
+                   timezones in the Syslog timestamps.
+        :type utc_timestamp:  bool
+    '''
+
     def __init__(self,
                  facility='user',
                  hostname=None,

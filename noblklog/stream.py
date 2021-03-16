@@ -22,6 +22,24 @@ from logging import Handler
 from .util import AsyncEmitMixin
 
 class AsyncStreamHandler(AsyncEmitMixin,Handler):
+    ''' Asynchronous logging handler that writes to a stream.
+
+        Requires an output stream that actually supports none-blocking
+        writes. If no *stream* is specified explicitly, standard error
+        is used.
+
+        On common Unix platforms only true FIFOs and named as well as
+        unnamed pipes are supported. This specifically includes the
+        standard output and error streams as well as shell pipes between
+        processs but explicitly excludes files.
+
+        The handler tries as best as possible to check for unsupported
+        output streams but cannot detect all possible problematic
+        configurations.
+
+        The log records are written to the stream followed by
+        *terminator*. '''
+
     def __init__(self, stream=None, terminator='\n'):
         self._terminator = terminator.encode()
 
