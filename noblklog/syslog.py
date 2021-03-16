@@ -214,7 +214,7 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
                  structured_data=None,
                  enterprise_id=None,
                  socket_path='/dev/log',
-                 socket_types=[SOCK_DGRAM, SOCK_STREAM],
+                 socket_types=(SOCK_DGRAM, SOCK_STREAM),
                  message_format=SYSLOG_FORMAT_RFC5424,
                  message_framing=SYSLOG_FRAMING_NON_TRANSPARENT,
                  utf8_bom=True,
