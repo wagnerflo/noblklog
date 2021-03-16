@@ -24,7 +24,7 @@ from .util import AsyncEmitMixin
 class AsyncStreamHandler(AsyncEmitMixin,Handler):
     ''' Asynchronous logging handler that writes to a stream.
 
-        Requires an output stream that actually supports none-blocking
+        Requires an output stream that actually supports non-blocking
         writes. If no *stream* is specified explicitly, standard error
         is used.
 

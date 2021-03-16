@@ -5,9 +5,9 @@
    api
    GitHub project page <https://github.com/wagnerflo/noblklog>
 
-==================================
-None blocking handlers for logging
-==================================
+=================================
+Non-blocking handlers for logging
+=================================
 
 In contrast to existing frameworks for logging from within Python’s
 :mod:`asyncio`, noblklog works hard to provide a implementation that
@@ -62,7 +62,7 @@ Anything to look out for?
 -------------------------
 
 Yes. Don't log too much. To preserve order of log messages while still
-being able to keep it’s promise of being none blocking, **noblklog**
+being able to keep it’s promise of being non-blocking, **noblklog**
 will sometimes have to queue messages. This is only necessary if the
 handler’s destination file descriptor won’t accept writes. Log too many
 and/or too big messages and this will happen and if you just keep on
