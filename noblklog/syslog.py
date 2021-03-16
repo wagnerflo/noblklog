@@ -104,10 +104,10 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
                  structured_data=None,
                  enterprise_id=None,
                  socket_path='/dev/log',
-                 socket_types=[SOCK_STREAM, SOCK_DGRAM],
+                 socket_types=[SOCK_DGRAM, SOCK_STREAM],
                  message_format=SYSLOG_FORMAT_RFC5424,
                  message_framing=SYSLOG_FRAMING_NON_TRANSPARENT,
-                 utf8_bom=False,
+                 utf8_bom=True,
                  utc_timestamp=False):
         # first things first: try connecting
         if not S_ISSOCK(stat(socket_path).st_mode):
