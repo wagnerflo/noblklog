@@ -281,6 +281,9 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
                 ).encode('ascii')
             )
 
+            if record.msg:
+                msg.extend(self.format(record).encode(self._msg_encoding))
+
         else:
             struct_time = self._sec_to_struct(record.created)
             msg = bytearray(
@@ -295,8 +298,10 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
             if (procid := self._get_procid(record)) is not None:
                 msg.extend(f'[{procid}]'.encode('ascii'))
 
-        if record.msg:
-            msg.extend(self.format(record).encode(self._msg_encoding))
+            if record.msg:
+                msg.extend(
+                    f': {self.format(record)}'.encode(self._msg_encoding)
+                )
 
         if self._message_framing == SYSLOG_FRAMING_NON_TRANSPARENT:
             msg.extend(b'\n')
