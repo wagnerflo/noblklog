@@ -74,12 +74,11 @@ def encode_priority(facility, priority):
 
 def mk_get_from_record(defaults, record_properties, max_len):
     for default in defaults:
-        if not default:
-            continue
-
-        default = ''.join(
-            ch for ch in str(default)[:max_len] if 33 <= ord(ch) <= 126
-        )
+        if default:
+            default = ''.join(
+                ch for ch in str(default)[:max_len] if 33 <= ord(ch) <= 126
+            )
+            break
 
     def func(record):
         for prop in record_properties:
