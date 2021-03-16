@@ -293,7 +293,7 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
                     f'{self._get_appname(record)}'
                 ).encode('ascii')
             )
-            if (procid := self._get_procid) is not None:
+            if (procid := self._get_procid(record)) is not None:
                 msg.extend(f'[{procid}]'.encode('ascii'))
 
         if record.msg:
