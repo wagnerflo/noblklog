@@ -6,7 +6,7 @@ setup(
     description='Non-blocking asyncio handlers for Python logging.',
     long_description=(Path(__file__).parent / 'README.md').read_text(),
     long_description_content_type='text/markdown',
-    version='0.2',
+    version='0.3',
     author='Florian Wagner',
     author_email='florian@wagner-flo.net',
     url='https://github.com/wagnerflo/noblklog',
