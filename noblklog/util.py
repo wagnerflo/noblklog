@@ -18,49 +18,69 @@ from collections import deque
 from selectors import DefaultSelector,EVENT_WRITE
 
 selector = DefaultSelector()
+workers = {}
 
-class AsyncEmitMixin(ABC):
-    def __init__(self, write_fd, write_func):
-        self._aem_fd = write_fd
-        self._aem_func = write_func
-        self._aem_queue = None
-        self._aem_event = None
-        self._aem_consumer = None
-        self._aem_known_loops = set()
+class Worker:
+    def __init__(self, loop, write_fd, write_func):
+        workers[write_fd] = self
+        self._loop = loop
+        self._fd = write_fd
+        self._func = write_func
+        self._users = set()
+        self._queue = deque()
+        self._event = Event(loop=loop)
+        self._consumer = loop.create_task(self._consume())
 
-    @abstractmethod
-    def prepareMessage(self, record):
-        pass
+    @property
+    def is_empty(self):
+        return not self._queue
 
-    def emit(self, record):
+    def append(self, user, data):
+        self._users.add(self)
+        self._queue.append(data)
+        self._event.set()
+
+    def user_closing(self, user, cb):
+        # Remove user from the list. If no users are left afterwards,
+        # close this worker down.
+        self._users.discard(user)
+
+        if not self._users and not self._consumer.cancelled():
+            self._consumer.add_done_callback(cb)
+            self._consumer.cancel()
+
+    async def _consume(self):
         try:
-            msg = self.prepareMessage(record)
-            try:
-                loop = get_running_loop()
-            except RuntimeError:
-                loop = None
-            self._aem_write(loop, msg)
-        except:
-            self.handleError(record)
+            while await self._event.wait():
+                self._event.clear()
+                await self._start_writer()
 
-    def _start_writer(self, loop):
-        fut = loop.create_future()
+        except CancelledError:
+            await self._start_writer()
+            del workers[self._fd]
+
+    def _start_writer(self):
+        fut = self._loop.create_future()
         fut.add_done_callback(
-            lambda fut: loop.remove_writer(self._aem_fd)
+            lambda fut: self._loop.remove_writer(self._fd)
         )
-        loop.add_writer(self._aem_fd, self._writer, fut)
+        self._loop.add_writer(self._fd, self._writer, fut)
         return fut
 
     def _writer(self, fut):
         try:
             # Start or continue sending data. The left side of the queue
             # represents our current message.
-            data = self._aem_queue[0]
-            n = self._aem_func(data)
+            data = self._queue[0]
+            n = self._func(data)
 
             # We were told EAGAIN, so just return and let the event loop
             # decide when to try again.
         except (BlockingIOError, InterruptedError) as exc:
+            return
+
+        except IndexError:
+            fut.set_result(None)
             return
 
         # Something horrible has happend.
@@ -78,91 +98,64 @@ class AsyncEmitMixin(ABC):
             return
 
         # ...or we might have more messages left in the queue
-        elif len(self._aem_queue) > 1:
-            self._aem_queue.popleft()
+        elif len(self._queue) > 1:
+            self._queue.popleft()
 
         # ...or possibly are really done for now.
         else:
-            self._aem_queue.clear()
+            self._queue.clear()
             fut.set_result(None)
 
-    async def _ame_consume(self, loop):
+class AsyncEmitMixin(ABC):
+    def __init__(self, write_fd, write_func):
+        self._aem_fd = write_fd
+        self._aem_func = write_func
+
+    @abstractmethod
+    def prepareMessage(self, record):
+        pass
+
+    def emit(self, record):
         try:
-            while await self._aem_event.wait():
-                self._aem_event.clear()
-                await self._start_writer(loop)
+            worker = workers.get(self._aem_fd)
+            data = self.prepareMessage(record)
 
-        except CancelledError:
-            # Look for a new loop to move the consumer to.
-            new_loop = self._find_loop()
+            # If the queue is empty try writing right away. Small
+            # messages might complete immediately and thus allow the
+            # overhead of queue and consumer task to be avoided.
+            if not worker or worker.is_empty:
+                try:
+                    n = self._aem_func(data)
+                except (BlockingIOError, InterruptedError):
+                    n = 0
 
-            # If our collection only yields ourselves then we might as
-            # well continue to empty the queue on this loop.
-            if new_loop == loop:
-                await self._start_writer(loop)
-                self._aem_event = None
-                self._aem_consumer = None
+                if n == len(data):
+                    return
 
-            # We got lucky. This can only happen in multi threaded
-            # enviroments with multiple loops running in different
-            # threads and using logging everywhere.
-            else:
-                await self._start_writer(loop)
+                data = memoryview(data)[n:]
 
-    def _find_loop(self):
-        # Throw out all loops that are closed.
-        self._aem_known_loops.difference_update([
-            loop for loop in self._aem_known_loops
-            if loop.is_closed()
-        ])
-        try:
-            return next(iter(self._aem_known_loops))
-        except StopIteration:
-            return None
+            # Copy data into a bytearray to make sure we have a mutable
+            # buffer for piecewise writing.
+            data = bytearray(data)
 
-    def _start_comsumer(self, loop):
-        self._aem_event = Event(loop=loop)
-        self._aem_consumer = loop.create_task(
-            self._ame_consume(loop)
-        )
+            if not worker:
+                try:
+                    # Starting here we can't postpone creating queue and
+                    # consumer any longer.
+                    worker = Worker(
+                        get_running_loop(), self._aem_fd, self._aem_func
+                    )
 
-    def _aem_write(self, loop, data):
-        # If the queue is empty try writing right away. Small messages
-        # might complete immediately and thus allow the overhead of
-        # queue and consumer task to be avoided.
-        if not self._aem_queue:
-            try:
-                n = self._aem_func(data)
-            except (BlockingIOError, InterruptedError):
-                n = 0
+                except RuntimeError:
+                    # We know of no running consumer and also have been
+                    # called from outside a loop: No other way than to
+                    # write synchronously.
+                    return self._write_sync(data)
 
-            if n == len(data):
-                return
+            worker.append(self, data)
 
-            data = memoryview(data)[n:]
-
-        # Copy data into a bytearray to make sure we have a mutable
-        # buffer for piecewise writing.
-        data = bytearray(data)
-
-        if not self._aem_consumer:
-            if loop is None:
-                # We know of no running consumer and also have been
-                # called from outside a loop: No other way than to write
-                # synchronously.
-                return self._write_sync(data)
-
-            # Starting here we can't postpone creating queue and
-            # consumer any longer.
-            self._aem_queue = deque()
-            self._start_comsumer(loop)
-
-        # Build a small collection of loops for worse times.
-        self._aem_known_loops.add(loop)
-
-        # Append to queue and notify consumer.
-        self._aem_queue.append(data)
-        self._aem_event.set()
+        except:
+            self.handleError(record)
 
     def _write_sync(self, data):
         selector.register(self._aem_fd, EVENT_WRITE)
@@ -178,17 +171,7 @@ class AsyncEmitMixin(ABC):
             selector.unregister(self._aem_fd)
 
     def close(self):
-        parent_close = super().close
-
-        def write_all(fut=None):
-            if self._aem_queue is not None:
-                for data in self._aem_queue:
-                    self._write_sync(data)
-
-            parent_close()
-
-        if self._aem_consumer and not self._aem_consumer.cancelled():
-            self._aem_consumer.add_done_callback(write_all)
-            self._aem_consumer.cancel()
+        if (worker := workers.get(self._aem_fd)) is not None:
+            worker.user_closing(self, super().close)
         else:
-            write_all()
+            super().close()
