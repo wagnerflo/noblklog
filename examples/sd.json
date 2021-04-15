@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "disable_existing_loggers": true,
+  "formatters": {
+    "default": {
+      "class": "logging.Formatter",
+      "format": "%(message)s"
+    }
+  },
+  "handlers": {
+    "syslog": {
+      "class": "noblklog.AsyncSyslogHandler",
+      "formatter": "default",
+      "structured_data": {
+        "default@123": {
+          "test": "abc"
+        }
+      }
+    }
+  },
+  "root": {
+    "handlers": ["syslog"],
+    "level": "NOTSET"
+  }
+}

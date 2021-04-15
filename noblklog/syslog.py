@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from itertools import chain
 from logging import Handler
 from logging.handlers import SysLogHandler
 from math import modf
@@ -68,6 +69,7 @@ MONTH_MAP = {
 }
 
 PRINTUSASCII = set(chr(i) for i in range(33, 127))
+SD_NAME = PRINTUSASCII - set('=]"')
 
 def encode_priority(facility, priority):
     if isinstance(priority, str):
@@ -95,6 +97,22 @@ def mk_get_from_record(defaults, record_properties, max_len):
         )
 
     return func
+
+def encode_sdname(val):
+    val = str(val)
+    if len(val) > 32:
+        raise Exception(f"SD-NAME '{val}' too long.")
+    for ch in val:
+        if ch not in SD_NAME:
+            raise Exception(f"Invalid character '{ch}' in SD-NAME '{val}'.")
+    return val.encode("ascii")
+
+def encode_param_value(val):
+    val = str(val)
+    for ch in '\\"]':
+        if ch in val:
+            val = val.replace(ch, f"\\{ch}")
+    return val.encode("utf8")
 
 class AsyncSyslogHandler(AsyncEmitMixin, Handler):
     ''' Asynchronous logging handler for sending RFC 3164 or 5424
@@ -156,8 +174,14 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
                    for individual messages.
         :type procid: str
 
-        :param structured_data: Reserved for future use.
-        :param enterprise_id: Reserved for future use.
+        :param structured_data: Default structured data elements to send
+                   with all messages. Needs to be a dictionary of
+                   dictionaries like this:
+                   ``{"SD-ID": {"PARAM-NAME": "PARAM-VALUE", ...}, ...}``.
+                   Defaults to an empty dictionary. Elements from
+                   ``extra={"structured_data": ...}`` and
+                   ``extra={"sd": ...}`` will be added on a per message
+                   basis.
 
         :param socket_path: Path of the Unix domain socket to connect
                    and deliver messages to. On common Unix systems with
@@ -213,8 +237,7 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
                  hostname=None,
                  appname=None,
                  procid=None,
-                 structured_data=None,
-                 enterprise_id=None,
+                 structured_data={},
                  socket_path='/dev/log',
                  socket_types=(SOCK_DGRAM, SOCK_STREAM),
                  message_format=SYSLOG_FORMAT_RFC5424,
@@ -230,6 +253,7 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
         # prepare settings
         self._is_5424 = message_format == SYSLOG_FORMAT_RFC5424
         self._facility = SysLogHandler.facility_names[facility]
+        self._structured_data = structured_data
         self._get_hostname = mk_get_from_record(
             (hostname, gethostname()),
             ('hostname',),
@@ -268,7 +292,6 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
     def prepareMessage(self, record):
         if self._is_5424:
             frac,stamp = modf(record.created)
-            structured_data = '-'
             msg = bytearray(
                 (
                     f'<{encode_priority(self._facility, record.levelname)}>'
@@ -279,9 +302,29 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
                     f'{self._get_appname(record)} '
                     f'{self._get_procid(record)} '
                     f'{self._get_msgid(record)} '
-                    f'{structured_data} '
                 ).encode('ascii')
             )
+
+            sd_ids = set()
+            for sd_id,sd_params in chain(
+                    getattr(record, "sd", {}).items(),
+                    getattr(record, "structured_data", {}).items(),
+                    self._structured_data.items(),
+                ):
+                if sd_id not in sd_ids and sd_params:
+                    sd_ids.add(sd_id)
+                    msg.extend(b"[")
+                    msg.extend(encode_sdname(sd_id))
+                    for param_name,param_value in sd_params.items():
+                        msg.extend(b" ")
+                        msg.extend(encode_sdname(param_name))
+                        msg.extend(b'="')
+                        msg.extend(encode_param_value(param_value))
+                        msg.extend(b'"')
+                    msg.extend(b"] ")
+
+            if not sd_ids:
+                msg.extend(b"- ")
 
             if record.msg:
                 msg.extend(self.format(record).encode(self._msg_encoding))
