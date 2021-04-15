@@ -67,6 +67,8 @@ MONTH_MAP = {
     12: 'Dec',
 }
 
+PRINTUSASCII = set(chr(i) for i in range(33, 127))
+
 def encode_priority(facility, priority):
     if isinstance(priority, str):
         priority = PRIORITY_MAP.get(priority, SysLogHandler.LOG_WARNING)
@@ -76,7 +78,7 @@ def mk_get_from_record(defaults, record_properties, max_len):
     for default in defaults:
         if default:
             default = ''.join(
-                ch for ch in str(default)[:max_len] if 33 <= ord(ch) <= 126
+                ch for ch in str(default)[:max_len] if ch in PRINTUSASCII
             )
             break
 
@@ -89,7 +91,7 @@ def mk_get_from_record(defaults, record_properties, max_len):
             return default
 
         return ''.join(
-            ch for ch in str(val)[:max_len] if 33 <= ord(ch) <= 126
+            ch for ch in str(val)[:max_len] if ch in PRINTUSASCII
         )
 
     return func
