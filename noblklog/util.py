@@ -28,7 +28,7 @@ class Worker:
         self._func = write_func
         self._users = set()
         self._queue = deque()
-        self._event = Event(loop=loop)
+        self._event = Event()
         self._consumer = loop.create_task(self._consume())
 
     @property
