@@ -69,4 +69,7 @@ Log too many and/or too big messages and this will happen. If you just
 keep on logging the message queue will eat your memory.
 
 In practice for normal sized software components with run of the mill
-logging behaviour this is not a problem that will surface.
+logging behaviour this is not a problem that will surface. If you're
+still afraid see the ``max_queued`` parameters on the logging handlers.
+Setting that will risk lost messages, though. If that's also not an
+option you probably need a custom logging solution.

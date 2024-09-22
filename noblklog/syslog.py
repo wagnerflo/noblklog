@@ -230,6 +230,14 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
                    component of your logging stack can't handle the
                    timezones in the Syslog timestamps.
         :type utc_timestamp:  bool
+
+        :param max_queued: Sets a size limit for the internal queue that
+                   is used in case of message congestion. This will
+                   guard against unbounded memory usage but on the other
+                   hand will risk dropped log messages in case the queue
+                   is full. Default is ``None`` for unlimited queue
+                   size.
+        :type max_queued: int
     '''
 
     def __init__(self,
@@ -243,7 +251,8 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
                  message_format=SYSLOG_FORMAT_RFC5424,
                  message_framing=SYSLOG_FRAMING_NON_TRANSPARENT,
                  utf8_bom=True,
-                 utc_timestamp=False):
+                 utc_timestamp=False,
+                 max_queued=None):
         # first things first: try connecting
         if not S_ISSOCK(stat(socket_path).st_mode):
             raise Exception(f"Not a unix domain socket: '{socket_path}'")
@@ -287,7 +296,7 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
             gmtime if self._is_5424 and utc_timestamp else localtime
 
         Handler.__init__(self)
-        AsyncEmitMixin.__init__(self, sock.fileno(), sock.send)
+        AsyncEmitMixin.__init__(self, sock.fileno(), sock.send, max_queued)
 
     def prepareMessage(self, record):
         if self._is_5424:

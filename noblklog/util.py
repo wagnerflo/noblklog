@@ -21,13 +21,14 @@ selector = DefaultSelector()
 workers = {}
 
 class Worker:
-    def __init__(self, loop, write_fd, write_func):
+    def __init__(self, loop, write_fd, write_func, maxlen=None):
         workers[write_fd] = self
         self._loop = loop
         self._fd = write_fd
         self._func = write_func
         self._users = set()
-        self._queue = deque()
+        self._maxlen = maxlen
+        self._queue = deque((), maxlen)
         self._event = Event()
         self._consumer = loop.create_task(self._consume())
 
@@ -36,9 +37,10 @@ class Worker:
         return not self._queue
 
     def append(self, user, data):
-        self._users.add(self)
-        self._queue.append(data)
-        self._event.set()
+        if self._maxlen is None or len(self._queue) < self._maxlen:
+            self._users.add(self)
+            self._queue.append(data)
+            self._event.set()
 
     def user_closing(self, user, cb):
         # Remove user from the list. If no users are left afterwards,
@@ -108,9 +110,10 @@ class Worker:
             fut.set_result(None)
 
 class AsyncEmitMixin(ABC):
-    def __init__(self, write_fd, write_func):
+    def __init__(self, write_fd, write_func, max_queued=None):
         self._aem_fd = write_fd
         self._aem_func = write_func
+        self._max_queued = max_queued
 
     @abstractmethod
     def prepareMessage(self, record):
@@ -144,7 +147,8 @@ class AsyncEmitMixin(ABC):
                     # Starting here we can't postpone creating queue and
                     # consumer any longer.
                     worker = Worker(
-                        get_running_loop(), self._aem_fd, self._aem_func
+                        get_running_loop(), self._aem_fd, self._aem_func,
+                        self._max_queued
                     )
 
                 except RuntimeError:

@@ -38,9 +38,18 @@ class AsyncStreamHandler(AsyncEmitMixin,Handler):
         configurations.
 
         The log records are written to the stream followed by
-        *terminator*. '''
+        *terminator*.
 
-    def __init__(self, stream=None, terminator='\n'):
+        :param max_queued: Sets a size limit for the internal queue that
+                   is used in case of message congestion. This will
+                   guard against unbounded memory usage but on the other
+                   hand will risk dropped log messages in case the queue
+                   is full. Default is ``None`` for unlimited queue
+                   size.
+        :type max_queued: int
+    '''
+
+    def __init__(self, stream=None, terminator='\n', max_queued=None):
         self._terminator = terminator.encode()
 
         fd = (sys.stderr if stream is None else stream).fileno()
@@ -58,7 +67,8 @@ class AsyncStreamHandler(AsyncEmitMixin,Handler):
         fcntl.fcntl(fd, fcntl.F_SETFL, fl | os.O_NONBLOCK)
 
         Handler.__init__(self)
-        AsyncEmitMixin.__init__(self, fd, os.fdopen(fd, 'wb', 0).write)
+        AsyncEmitMixin.__init__(
+            self, fd, os.fdopen(fd, 'wb', 0).write, max_queued)
 
     def prepareMessage(self, record):
         return self.format(record).encode() + self._terminator
