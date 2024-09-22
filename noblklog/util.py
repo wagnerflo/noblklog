@@ -74,11 +74,12 @@ class Worker:
             data = self._queue[0]
             n = self._func(data)
 
-            # We were told EAGAIN, so just return and let the event loop
-            # decide when to try again.
+        # We were told EAGAIN, so just return and let the event loop
+        # decide when to try again.
         except (BlockingIOError, InterruptedError) as exc:
             return
 
+        # The queue is empty. We're done here.
         except IndexError:
             fut.set_result(None)
             return

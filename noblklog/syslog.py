@@ -139,8 +139,8 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
         daemon's settings if you go that way.
 
         This handler will encode messages contents in UTF-8. For RFC
-        5424 this is the specified behaviour. For RFC 3164 this simply
-        works usually. (That's all you can ever hope for the old
+        5424 this is the specified behaviour. For RFC 3164 this usually
+        works, too. ("Usually" is all you can ever hope for the old
         Syslog protocol.)
 
         :param facility: Set the Syslog facility to send messages with.
@@ -152,13 +152,13 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
                    with. Defaults to the value returned by
                    :func:`socket.gethostname`. Individual messages can
                    overwrite this by passing
-                   ``extra={'hostname': 'string}`` to the logging
+                   ``extra={'hostname': 'string'}`` to the logging
                    method.
         :type hostname: str
 
         :param appname: Specify the default appname (or tag in RFC 3164
                    jargon) to send messages with. Defaults to ``'-'`` to
-                   denote uspecified as per RFC 5424. Use
+                   denote unspecified as per RFC 5424. Use
                    ``extra={'appname': 'string'}`` to overwrite this for
                    individual messages.
         :type appname: str
@@ -166,11 +166,11 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
         :param procid: Specify the default process id to send with the
                    messages with. Defaults to ``'-'`` for RFC 5424 mode
                    and completly dropping the field for RFC 3164. Since
-                   the :mod:`logging` module will be default pass the
+                   the :mod:`logging` module will by default pass the
                    result of :func:`os.getpid` for each message logged
-                   and this handler will use the value there's usually
-                   no reason to use this. Use
-                   ``extra={'procid': 'string', ...}`` to overwrite this
+                   and this handler will use that value there's usually
+                   no reason to use this parameter. Use
+                   ``extra={'procid': 'string'}`` to overwrite this
                    for individual messages.
         :type procid: str
 
@@ -204,12 +204,12 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
                    everywhere but is much well defined.
         :type message_format: int
 
-        :param message_framing: Tell's the handler how to delimit
+        :param message_framing: Tells the handler how to delimit
                    messages on stream transports. For datagramm (UDP)
                    mode this parameter is ignored. The default value of
                    ``SYSLOG_FRAMING_NON_TRANSPARENT`` will simply end
                    each message with a newline character. This can break
-                   if you're into logging newlines. Try using
+                   if you're logging newlines. Try using
                    ``SYSLOG_FRAMING_OCTET_COUNTING`` then but be warned
                    that some Syslog deamons might need configuration
                    changes or simply not support this mode.
@@ -217,10 +217,10 @@ class AsyncSyslogHandler(AsyncEmitMixin, Handler):
 
         :param utf8_bom: Some RFC 5424 Syslog deamons will trip over the
                    UTF-8 byte order mark required by the standard. This
-                   is obviously broken behaviour but since a workaround
-                   is trivial here you go. Set this parameter to False
-                   to write the message without a BOM between header and
-                   content.
+                   is obviously broken behaviour but since fixing other
+                   peoples messes is had here's a workaround. Set this
+                   parameter to False to write the message without a BOM
+                   between header and content.
         :type utf8_bom: bool
 
         :param utc_timestamp: Send message timestamp as UTC instead of
